@@ -52,8 +52,14 @@ module.exports = {
       availableGlossaries = await client.listGlossaries();
       lastGlossariesFetch = new Date();
     }
+    const findGlossary = providerOptions.findGlossary || ((glossaries, sourceLocale, targetLocale) => {
+      return glossaries.find((glossary) =>
+        glossary.sourceLang === sourceLocale && glossary.targetLang === targetLocale
+      );
+    });
 
-    fetchGlossaries();
+    if (providerOptions.fetchGlossaries)
+      fetchGlossaries();
 
     return {
       /**
@@ -104,14 +110,13 @@ module.exports = {
           maxByteSize: DEEPL_API_ROUGH_MAX_REQUEST_SIZE,
         })
 
-        // Check if last glossaries fetch was more than 1 hour ago
-        if (new Date() - lastGlossariesFetch > 60 * 60 * 1000) {
-          await fetchGlossaries();
-        }
+        let glossary = undefined;
 
-        const glossary = availableGlossaries.filter((glossary) =>
-          glossary.sourceLang === sourceLocale && glossary.targetLang === targetLocale
-        ).sort((a, b) => b.creationTime - a.creationTime)[0];
+        if (providerOptions.fetchGlossaries) {
+          if (new Date() - lastGlossariesFetch > (providerOptions.fetchGlossariesIntervalMs || 3600000))
+            await fetchGlossaries();
+          glossary = findGlossary(availableGlossaries, sourceLocale, targetLocale);
+        }
 
         let result = reduceFunction(
           await Promise.all(
@@ -126,7 +131,7 @@ module.exports = {
                 texts,
                 parseLocale(sourceLocale, localeMap, 'source'),
                 parseLocale(targetLocale, localeMap, 'target'),
-                { ...apiOptions, tagHandling, glossary: glossary.glossaryId }
+                { ...apiOptions, tagHandling, glossary: glossary?.glossaryId }
               )
               return result.map((value) => value.text)
             })
